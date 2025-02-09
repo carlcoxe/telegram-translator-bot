@@ -1,4 +1,6 @@
-googletrans==3.1.0a0
+aiogram
+googletrans==4.0.0-rc1
 pyTelegramBotAPI
 asyncio
 aiohttp
+
