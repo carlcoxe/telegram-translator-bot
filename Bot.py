@@ -1,12 +1,12 @@
+import os
 import logging
 import asyncio
 from uuid import uuid4
-import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from googletrans import Translator
 
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TOKEN = os.getenv("API_bot")  # Токен теперь берём из Railway
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 translator = Translator()
@@ -14,14 +14,32 @@ translator = Translator()
 # Логирование
 logging.basicConfig(level=logging.INFO)
 
+# Словарь для хранения языка каждого пользователя
+user_languages = {}
+
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
-    await message.reply(f"Привет, {message.from_user.first_name}! "
-                        "Просто отправь текст, и я переведу его!")
+    await message.reply(f"Привет, {message.from_user.first_name}!\n"
+                        "Кидай мне текст, и я его переведу.\n"
+                        "Для смены языка используй команду /lang.")
 
 @dp.message_handler(commands=['help'])
 async def help_command(message: types.Message):
-    await message.reply("Отправь мне текст, и я переведу его автоматически.")
+    await message.reply("Отправь мне текст, и я переведу его автоматически.\n"
+                        "Команда /lang позволяет сменить язык перевода.")
+
+@dp.message_handler(commands=['lang'])
+async def change_language(message: types.Message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons = ["Русский", "Английский", "Немецкий"]
+    keyboard.add(*buttons)
+    await message.reply("Выбери язык, на который хочешь переводить:", reply_markup=keyboard)
+
+@dp.message_handler(lambda message: message.text in ["Русский", "Английский", "Немецкий"])
+async def set_user_language(message: types.Message):
+    lang_map = {"Русский": "ru", "Английский": "en", "Немецкий": "de"}
+    user_languages[message.from_user.id] = lang_map[message.text]
+    await message.reply(f"Теперь я буду переводить на {message.text}.", reply_markup=types.ReplyKeyboardRemove())
 
 @dp.message_handler()
 async def translate_text(message: types.Message):
@@ -29,38 +47,20 @@ async def translate_text(message: types.Message):
     if not text:
         return
 
-    # Определение языка
     lang_detected = translator.detect(text).lang
-    target_lang = 'en' if lang_detected == 'ru' else 'ru'
+    target_lang = user_languages.get(message.from_user.id, "en")  # По умолчанию английский
+
+    if lang_detected == target_lang:  # Если текст уже на нужном языке, не переводим
+        await message.reply("Текст уже на этом языке.")
+        return
 
     translated_text = translator.translate(text, dest=target_lang).text
     await message.reply(f"Перевод:\n{translated_text}")
 
-@dp.message_handler(content_types=['photo'])
-async def handle_image(message: types.Message):
-    caption = message.caption
-    if not caption:
-        await bot.send_photo(message.chat.id, message.photo[-1].file_id,
-                             caption="Нет подписи для перевода.")
-        return
+# Запуск бота
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
 
-    lang_detected = translator.detect(caption).lang
-    target_lang = 'en' if lang_detected == 'ru' else 'ru'
-    translated_text = translator.translate(caption, dest=target_lang).text
-
-    await bot.send_photo(message.chat.id, message.photo[-1].file_id, caption=translated_text)
-
-@dp.inline_handler(lambda query: query.query.strip() != "")
-async def inline_query(query: types.InlineQuery):
-    text = query.query.strip()
-    lang_detected = translator.detect(text).lang
-    target_lang = 'en' if lang_detected == 'ru' else 'ru'
-
-    translated_text = translator.translate(text, dest=target_lang).text
-    results = [types.InlineQueryResultArticle(
-        id=str(uuid4()), title=translated_text,
-        input_message_content=types.InputTextMessageContent(message_text=translated_text)
-    )]
 
     await bot.answer_inline_query(query.id, results)
 
