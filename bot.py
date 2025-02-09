@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
 from googletrans import Translator
 
-TOKEN = os.getenv("API_bot")  # Токен теперь берём из Railway
+TOKEN = 7076126069:AAGdmv4UTaLutNmCzWMPSU13FeBGrc6ps4E  # Токен теперь берём из Railway
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
