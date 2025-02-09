@@ -1,66 +1,100 @@
-import os
 import logging
-import asyncio
+import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 from googletrans import Translator
+import asyncio
 
-TOKEN = "7076126069:AAGdmv4UTaLutNmCzWMPSU13FeBGrc6ps4E"  # Токен теперь берём из Railway
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+# ✅ Получаем токен из переменных окружения (Railway использует API_bot)
+TOKEN = os.getenv("API_bot")
 
-translator = Translator()
+# Проверяем, есть ли токен
+if not TOKEN:
+    raise ValueError("❌ Ошибка: Токен бота не найден! Убедитесь, что переменная API_bot задана в Railway.")
 
-# Логирование
+# ✅ Инициализация бота и диспетчера
+bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher(storage=MemoryStorage())
+
+# ✅ Логирование
 logging.basicConfig(level=logging.INFO)
 
-# Словарь для хранения языка каждого пользователя
+# ✅ Переводчик
+translator = Translator()
+
+# ✅ Доступные языки перевода
+LANGUAGES_MAP = {
+    "Русский": "ru",
+    "Английский": "en",
+    "Немецкий": "de",
+    "Французский": "fr"
+}
+
+# ✅ Словарь для хранения выбранного языка пользователей
 user_languages = {}
 
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    await message.answer(f"Привет, {message.from_user.first_name}!\n"
-                         "Кидай мне текст, и я его переведу.\n"
-                         "Для смены языка используй команду /lang.")
+# ✅ Клавиатура выбора языка
+lang_keyboard = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text=lang)] for lang in LANGUAGES_MAP.keys()],
+    resize_keyboard=True
+)
 
-@dp.message_handler(commands=['help'])
-async def help_command(message: types.Message):
-    await message.answer("Отправь мне текст, и я переведу его автоматически.\n"
-                         "Команда /lang позволяет сменить язык перевода.")
+# 📌 Обработчик команды /start
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.answer("👋 Привет! Я бот-переводчик. Используй команду /lang, чтобы выбрать язык перевода.")
 
-@dp.message_handler(commands=['lang'])
-async def change_language(message: types.Message):
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    buttons = ["Русский", "Английский", "Немецкий"]
-    keyboard.add(*buttons)
-    await message.answer("Выбери язык, на который хочешь переводить:", reply_markup=keyboard)
+# 📌 Обработчик команды /help
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    await message.answer("📖 Отправь мне текст, и я переведу его на выбранный тобой язык.\nВыбери язык командой /lang.")
 
-@dp.message_handler(lambda message: message.text in ["Русский", "Английский", "Немецкий"])
-async def set_user_language(message: types.Message):
-    lang_map = {"Русский": "ru", "Английский": "en", "Немецкий": "de"}
-    user_languages[message.from_user.id] = lang_map[message.text]
-    await message.answer(f"Теперь я буду переводить на {message.text}.", reply_markup=ReplyKeyboardRemove())
+# 📌 Обработчик команды /lang
+@dp.message(Command("lang"))
+async def cmd_lang(message: types.Message):
+    await message.answer("🌍 Выбери язык для перевода:", reply_markup=lang_keyboard)
 
-@dp.message_handler()
-async def translate_text(message: types.Message):
-    text = message.text
-    if not text:
-        return
+# 📌 Обработчик выбора языка
+@dp.message(lambda message: message.text in LANGUAGES_MAP)
+async def select_language(message: types.Message):
+    user_languages[message.from_user.id] = LANGUAGES_MAP[message.text]
+    await message.answer(f"✅ Язык перевода установлен: {message.text}")
 
-    lang_detected = translator.detect(text).lang
-    target_lang = user_languages.get(message.from_user.id, "en")  # По умолчанию английский
+# 📌 Обработчик перевода сообщений
+@dp.message()
+async def translate_message(message: types.Message):
+    user_id = message.from_user.id
+    target_lang = user_languages.get(user_id, "en")  # По умолчанию переводим на английский
 
-    if lang_detected == target_lang:  # Если текст уже на нужном языке, не переводим
-        await message.answer("Текст уже на этом языке.")
-        return
+    try:
+        # Определяем язык входного текста
+        detected_lang = translator.detect(message.text).lang
 
-    translated_text = translator.translate(text, dest=target_lang).text
-    await message.answer(f"Перевод:\n{translated_text}")
+        # Если язык уже совпадает с целевым
+        if detected_lang == target_lang:
+            await message.answer("🔹 Твой текст уже на выбранном языке!")
+            return
 
-# 🚀 Новый запуск для aiogram 3.x
+        # Переводим текст
+        translated_text = translator.translate(message.text, dest=target_lang).text
+        await message.answer(f"📜 Перевод:\n<code>{translated_text}</code>")
+    
+    except Exception as e:
+        logging.error(f"Ошибка перевода: {e}")
+        await message.answer("⚠️ Ошибка перевода. Попробуйте позже.")
+
+# 📌 Обработчик ошибок
+@dp.errors()
+async def error_handler(update, exception):
+    logging.error(f"❌ Ошибка: {exception}")
+    return True  # Чтобы бот не падал
+
+# 📌 Запуск бота
 async def main():
-    dp.include_router(dp)  # Добавляем роутер
-    await bot.delete_webhook(drop_pending_updates=True)  # Удаляем старые сообщения
+    await bot.delete_webhook(drop_pending_updates=True)  # Удаляем старые апдейты
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
