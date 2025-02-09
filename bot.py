@@ -1,7 +1,6 @@
 import os
 import logging
 import asyncio
-from uuid import uuid4
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from googletrans import Translator
@@ -57,12 +56,6 @@ async def translate_text(message: types.Message):
     translated_text = translator.translate(text, dest=target_lang).text
     await message.reply(f"Перевод:\n{translated_text}")
 
-# Запуск бота
+# ✅ Правильный запуск бота
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
-
-
-    await bot.answer_inline_query(query.id, results)
-
-if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
