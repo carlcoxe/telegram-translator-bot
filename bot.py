@@ -24,7 +24,7 @@ dp = Dispatcher(storage=MemoryStorage())
 translator = Translator()
 
 # ✅ Доступные языки перевода
-LANGUAGES_MAP = {"Русский": "ru", "Английский": "en", "Немецкий": "de", "Французский": "fr"}
+LANGUAGES_MAP = {"Русский": "ru", "Английский": "en", "Немецкий": "de", "Французский": "fr", "Китайский": "zh-cn" }
 user_languages = {}
 
 # ✅ Клавиатура выбора языка
